@@ -1,5 +1,4 @@
 import numpy as np
-from pytorch_lightning.utilities.types import TRAIN_DATALOADERS
 import torch
 from torch import nn 
 from torch.utils.data import DataLoader,Dataset,random_split
@@ -9,9 +8,10 @@ import os
 from skimage import io
 from scipy.ndimage import distance_transform_edt
 import pytorch_lightning as pl
+from helpers import *
 
 class HistoricalGlyphDataset(Dataset):
-    def __init__(self,data_dir,num_of_coord=2,transform=None) -> None:
+    def __init__(self,data_dir,num_of_coord=2,transform=None):
         super().__init__()
         #number of pixels to sample
         self.num_of_coord=num_of_coord
@@ -35,12 +35,12 @@ class HistoricalGlyphDataset(Dataset):
 
         #Normalize 0 to 1
         #sampling random row and column value
-        #print(skel.shape)
         row=np.random.randint(0,skel.shape[0])
         col=np.random.randint(0,skel.shape[1])
-        #print("row,col:",row,",",col,"\n")
-        #pixel_coord=transforms.Normalize(torch.tensor([row,col]))
-        sample= {'image':image,'pixel_coord': torch.tensor([row,col]),'sdv':torch.tensor(skel_signed_dist[row][col],dtype=torch.float32)}
+        
+        #Normalize the coordinates in the range -1 and 1
+        pixel_coord=normalize([row,col])
+        sample= {'image':image,'pixel_coord': torch.tensor(pixel_coord),'sdv':torch.tensor(skel_signed_dist[row][col],dtype=torch.float32)}
         if self.transform:
             sample['image']=self.transform(sample['image'])
         return sample

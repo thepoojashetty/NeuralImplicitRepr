@@ -34,6 +34,7 @@ class LogImageCallback(Callback):
                 #print("j:",j,"\n")
                 pixel_coord=torch.tensor([i,j]).unsqueeze(0)
                 skel_img[0][i][j] = pl_module(self.image_to_test,pixel_coord)
+        skel_img=np.where(np.array(skel_img)<4,0,255)
         return skel_img
         
 

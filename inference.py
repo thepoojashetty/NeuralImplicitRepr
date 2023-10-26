@@ -43,6 +43,7 @@ def generateSkeleton(img_path,model,device,transform):
                 pixel_coord=torch.tensor([i,j]).unsqueeze(0).to(device)
                 skel_img[i][j] = model(image,pixel_coord)
 
+    skel_img=np.where(np.array(skel_img)<4,0,255)
     plt.imshow(skel_img)
     print(skel_img)
     plt.savefig("Output_skel.png")
@@ -52,7 +53,7 @@ if __name__=="__main__":
     transform=transforms.Compose([
             transforms.ToTensor()
         ])
-    model=NeuralSignedDistanceModel.load_from_checkpoint(NIR_config_inf.CKPT_DIR_PATH+"train_loss(train=0)_best_epoch=105.ckpt")
+    model=NeuralSignedDistanceModel.load_from_checkpoint(NIR_config_inf.CKPT_DIR_PATH+"train_loss(train_loss=23.324462890625)_best_epoch=176.ckpt")
     img_path=NIR_config_inf.DATA_DIR+"/img/Fust & Schoeffer Durandus Gotico-Antiqua 118G_A_8.png"
     generateSkeleton(img_path,model,device,transform)
 

@@ -6,20 +6,38 @@ import torch.nn.functional as F
 import  pytorch_lightning as pl
 import torch.optim as optim
 import numpy as np
-
+    
 class SineLayer(nn.Module):
-    def __init__(self,in_features,out_features,omega_0=30):
+    # See paper sec. 3.2, final paragraph, and supplement Sec. 1.5 for discussion of omega_0.
+    
+    # If is_first=True, omega_0 is a frequency factor which simply multiplies the activations before the 
+    # nonlinearity. Different signals may require different omega_0 in the first layer - this is a 
+    # hyperparameter.
+    
+    # If is_first=False, then the weights will be divided by omega_0 so as to keep the magnitude of 
+    # activations constant, but boost gradients to the weight matrix (see supplement Sec. 1.5)
+    
+    def __init__(self, in_features, out_features, bias=True,is_first=False, omega_0=30):
         super().__init__()
-        self.omega_0=omega_0
-        self.in_features=in_features
-        self.out_features=out_features
-        self.linear=nn.Linear(self.in_features,self.out_features)
-
+        self.omega_0 = omega_0
+        self.is_first = is_first
+        
+        self.in_features = in_features
+        self.linear = nn.Linear(in_features, out_features, bias=bias)
+        
+        self.init_weights()
+    
+    def init_weights(self):
         with torch.no_grad():
-            self.linear.weight.uniform_(-1 / self.in_features, 1 / self.in_features)
-
-    def forward(self,x):
-        return torch.sin(self.omega_0*self.linear(x))
+            if self.is_first:
+                self.linear.weight.uniform_(-1 / self.in_features, 
+                                             1 / self.in_features)      
+            else:
+                self.linear.weight.uniform_(-np.sqrt(6 / self.in_features) / self.omega_0, 
+                                             np.sqrt(6 / self.in_features) / self.omega_0)
+        
+    def forward(self, input):
+        return torch.sin(self.omega_0 * self.linear(input))
 
 class NeuralSignedDistanceModel(pl.LightningModule):
     def __init__(self, learning_rate) -> None:
@@ -37,25 +55,38 @@ class NeuralSignedDistanceModel(pl.LightningModule):
             nn.ReLU(),
             nn.Conv2d(in_channels=self.hidden*4,out_channels=self.hidden*4,kernel_size=3,stride=1,padding=1),
             nn.ReLU(),
-            nn.Conv2d(in_channels=self.hidden*4,out_channels=self.hidden*4,kernel_size=3,stride=1,padding=1),
-            nn.ReLU(),
             nn.Flatten(),
             nn.Linear(3200,64)
         )
 
-        self.siren=nn.Sequential(
-            SineLayer(66,32),
-            SineLayer(32,10),
-            nn.Linear(10,1)
-        )
+        self.siren_net=self.siren(in_features=66, out_features=1, hidden_features=256, hidden_layers=3, outermost_linear=True)
 
         self.loss=nn.MSELoss()
         self.save_hyperparameters()
+    
+    def siren(self,in_features, hidden_features, hidden_layers, out_features, outermost_linear=False, first_omega_0=30, hidden_omega_0=30.):
+        net = []
+        net.append(SineLayer(in_features, hidden_features, is_first=True, omega_0=first_omega_0))
+
+        for i in range(hidden_layers):
+            net.append(SineLayer(hidden_features, hidden_features, is_first=False, omega_0=hidden_omega_0))
+
+        if outermost_linear:
+            final_linear = nn.Linear(hidden_features, out_features)
+            
+            with torch.no_grad():
+                final_linear.weight.uniform_(-np.sqrt(6 / hidden_features) / hidden_omega_0, np.sqrt(6 / hidden_features) / hidden_omega_0)
+                
+            net.append(final_linear)
+        else:
+            net.append(SineLayer(hidden_features, out_features, is_first=False, omega_0=hidden_omega_0))
+
+        return nn.Sequential(*net)
 
     def forward(self,x,pixel_coord):
         output=self.layers(x)
-        output=torch.cat((pixel_coord,output),dim=1)
-        output=self.siren(output)
+        output=torch.cat((pixel_coord.to(torch.float32),output),dim=1)
+        output=self.siren_net(output)
         #print(f"Out shape {output.shape}")
         return output
 
@@ -85,7 +116,7 @@ class NeuralSignedDistanceModel(pl.LightningModule):
         image,pixel_coord=batch['image'],batch['pixel_coord']
         pred=self.forward(image,pixel_coord)
         loss=self.loss(pred,batch['sdv'])
-        return loss,pred
+        return loss,pred#
     
     def configure_optimizers(self):
         return optim.AdamW(self.parameters(),lr=self.lr)
@@ -97,7 +128,8 @@ class NeuralSignedDistanceModel(pl.LightningModule):
             for j in range(skel_imgs.shape[3]):
                 pixel_coord=torch.tensor([i,j]).expand(skel_imgs.shape[0],-1)
                 out = self.forward(image,pixel_coord).view(skel_imgs.shape[0],1,1,1)
-                print("out:",out[:,0,0,0])
+                #print("out:",out[:,0,0,0])
                 skel_imgs[:,0,i,j]=out[:,0,0,0]
-        print("skel_img:",skel_imgs)
+        #print("skel_img:",skel_imgs)
+        skel_imgs=np.where(np.array(skel_imgs)<4,0,255)
         return skel_imgs

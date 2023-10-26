@@ -34,7 +34,8 @@ if __name__=='__main__':
     os.makedirs(config.CKPT_DIR_PATH, exist_ok=True)
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     transform=transforms.Compose([
-            transforms.ToTensor()
+            transforms.ToTensor(),
+            transforms.Normalize(torch.Tensor([0.5]), torch.Tensor([0.5]))
         ])
     model= NeuralSignedDistanceModel(learning_rate=config.LEARNING_RATE)
     data= GlyphDataModule(
