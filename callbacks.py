@@ -4,7 +4,7 @@ import numpy as np
 import torch
 from skimage import io
 from torchvision import transforms
-import config
+import NIR_config_inf as config
 
 
 class LogImageCallback(Callback):

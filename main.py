@@ -1,7 +1,7 @@
 
 from GlyphDataset import GlyphDataModule
 from model import NeuralSignedDistanceModel
-import config
+import NIR_config_inf as config
 
 from torchvision import transforms
 import numpy as np
@@ -14,20 +14,10 @@ import argparse
 from pytorch_lightning.loggers import TensorBoardLogger
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import EarlyStopping,ModelCheckpoint
-from callbacks import LogImageCallback
+#from callbacks import LogImageCallback
 import os
 
 #env name : tenv
-
-"""
-def parse_args():
-    parser = argparse.ArgumentParser(description='Train a neural network to generate image skeletons')
-    parser.add_argument('--data_path', type=str, help="path to data",default=path)
-    parser.add_argument('--batch_size', type=int, default=128,help="number of samples in the batch")
-    parser.add_argument('--epochs', type=int, default=5,help="number of epochs")
-    parser.add_argument('--model_path',type=str,default="./Model/model.pt")
-    return parser.parse_args()
-"""
 
 if __name__=='__main__':
     #args=parse_args()
@@ -50,13 +40,13 @@ if __name__=='__main__':
         logger=logger,
         min_epochs=1,
         max_epochs= config.NUM_EPOCHS,
-        precision=config.PRECISION,
-        overfit_batches=3,
+        overfit_batches=1,
         callbacks=[
             ModelCheckpoint(
                 dirpath=config.CKPT_DIR_PATH,
                 filename="train_loss({train_loss})_best_{epoch}",
-                monitor='train_loss'
+                monitor='train_loss',
+                mode="min"
             ),
             #LogImageCallback()
             #EarlyStopping(monitor="validation_loss")

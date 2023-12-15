@@ -10,6 +10,8 @@ from scipy.ndimage import distance_transform_edt
 import pytorch_lightning as pl
 from helpers import *
 
+import matplotlib.pyplot as plt
+
 class HistoricalGlyphDataset(Dataset):
     def __init__(self,data_dir,num_of_coord=2,transform=None):
         super().__init__()
@@ -35,12 +37,17 @@ class HistoricalGlyphDataset(Dataset):
 
         #Normalize 0 to 1
         #sampling random row and column value
-        row=np.random.randint(0,skel.shape[0])
-        col=np.random.randint(0,skel.shape[1])
+        i=np.random.randint(0,skel.shape[0])
+        j=np.random.randint(0,skel.shape[1])
         
         #Normalize the coordinates in the range -1 and 1
-        pixel_coord=normalize([row,col])
-        sample= {'image':image,'pixel_coord': torch.tensor(pixel_coord),'sdv':torch.tensor(skel_signed_dist[row][col],dtype=torch.float32)}
+        pixel_coord=normalize([j,i])
+        #plotMat(skel_signed_dist)
+        #plt.clf()
+        #plt.imshow(skel)
+        #plt.scatter(i,j,color="red")
+        #plt.show()
+        sample= {'image':image,'pixel_coord': torch.tensor(pixel_coord),'sdv':torch.tensor(skel_signed_dist[i,j],dtype=torch.float32)}
         if self.transform:
             sample['image']=self.transform(sample['image'])
         return sample
@@ -90,3 +97,11 @@ class GlyphDataModule(pl.LightningDataModule):
             num_workers=self.num_workers,
             shuffle=False
         )
+    
+def plotMat(skel_signed_dist):
+    fig,ax=plt.subplots(figsize=(16,16))
+    ax.matshow(skel_signed_dist,cmap=plt.cm.Blues)
+    for i in range(64):
+        for j in range(64):
+            ax.text(j, i, str(round(skel_signed_dist[i, j],1)), ha='center', va='center',fontsize=5)
+    plt.show()
