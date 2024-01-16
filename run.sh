@@ -22,4 +22,4 @@ source /cluster/ix87iquc/miniconda/etc/profile.d/conda.sh
 conda activate nirenv
 
 cd /scratch/$SLURM_JOB_ID/NIR
-python main.py
+python siren.py

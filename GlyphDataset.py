@@ -34,6 +34,7 @@ class HistoricalGlyphDataset(Dataset):
         skel_path=os.path.join(self.skel_dir,self.skel[idx])
         skel=io.imread(skel_path)
         skel_signed_dist=distance_transform_edt(skel)
+        skel_signed_dist=self.transform(skel_signed_dist).squeeze(0).to(torch.float32)
 
         #Normalize 0 to 1
         #sampling random row and column value
@@ -41,13 +42,14 @@ class HistoricalGlyphDataset(Dataset):
         j=np.random.randint(0,skel.shape[1])
         
         #Normalize the coordinates in the range -1 and 1
-        pixel_coord=normalize([j,i])
+        pixel_coord=normalize(torch.tensor([i,j],dtype=torch.float32))
+        #pixel_coord=[i,j]
         #plotMat(skel_signed_dist)
         #plt.clf()
         #plt.imshow(skel)
         #plt.scatter(i,j,color="red")
         #plt.show()
-        sample= {'image':image,'pixel_coord': torch.tensor(pixel_coord),'sdv':torch.tensor(skel_signed_dist[i,j],dtype=torch.float32)}
+        sample= {'image':image,'pixel_coord': pixel_coord,'sdv':skel_signed_dist[i,j]}
         if self.transform:
             sample['image']=self.transform(sample['image'])
         return sample

@@ -44,28 +44,25 @@ class NeuralSignedDistanceModel(pl.LightningModule):
     def __init__(self, learning_rate) -> None:
         super().__init__()
         self.lr=learning_rate
-        self.hidden=32
+        self.hidden=256
         self.layers = nn.Sequential(
             nn.Conv2d(in_channels=1,out_channels=self.hidden,kernel_size=5,stride=2,padding=3),
             nn.BatchNorm2d(self.hidden),
             nn.ReLU(),
             nn.Conv2d(in_channels=self.hidden,out_channels=self.hidden*2,kernel_size=5,stride=2,padding=2),
-            nn.BatchNorm2d(self.hidden*2),
+            nn.BatchNorm2d(128),
             nn.ReLU(),
             nn.Conv2d(in_channels=self.hidden*2,out_channels=self.hidden*3,kernel_size=3,stride=2,padding=1),
-            nn.BatchNorm2d(self.hidden*3),
+            nn.BatchNorm2d(64),
             nn.ReLU(),
             nn.Conv2d(in_channels=self.hidden*3,out_channels=self.hidden*4,kernel_size=3,stride=2,padding=1),
-            nn.BatchNorm2d(self.hidden*4),
-            nn.ReLU(),
-            nn.Conv2d(in_channels=self.hidden*4,out_channels=self.hidden*4,kernel_size=3,stride=1,padding=1),
-            nn.BatchNorm2d(self.hidden*4),
+            nn.BatchNorm2d(64),
             nn.ReLU(),
             nn.Flatten(),
             nn.Linear(3200,64)
         )
 
-        self.siren_net=self.siren(in_features=66, out_features=1, hidden_features=256, hidden_layers=5, outermost_linear=True)
+        self.siren_net=self.siren(in_features=2, out_features=1, hidden_features=256, hidden_layers=5, outermost_linear=True)
 
         self.loss=nn.MSELoss()
         self.save_hyperparameters()
@@ -90,26 +87,26 @@ class NeuralSignedDistanceModel(pl.LightningModule):
         return nn.Sequential(*net)
 
     def forward(self,x,pixel_coord):
-        output=self.layers(x)
+        #output=self.layers(x)
         #scale between -1 and 1
         #minval=output.min().item()
         #maxval=output.max().item()
         #output=-1+2*(output-minval)/(maxval-minval)
-        output=torch.cat((pixel_coord.to(torch.float32),output),dim=1)
-        output=self.siren_net(output)
+        #output=torch.cat((pixel_coord.to(torch.float32),output),dim=1)
+        output=self.siren_net(pixel_coord)
         #print(f"Out shape {output.shape}")
         return output
 
     def training_step(self, batch, batch_idx):
         loss,pred=self.common_step(batch,batch_idx)
         self.log('train_loss',loss,on_epoch=True)
-        if self.current_epoch%20==0 and batch_idx==0:
-            self.eval()
-            with torch.no_grad():
-                skel_imgs=self.generateSkeleton(batch=batch)
-                self.logger.experiment.add_images("Glyphs",batch['image'])
-                self.logger.experiment.add_images("Skeletons",skel_imgs)
-            self.train()
+        # if self.current_epoch%20==0 and batch_idx==0:
+        #     self.eval()
+        #     with torch.no_grad():
+        #         skel_imgs=self.generateSkeleton(batch=batch)
+        #         self.logger.experiment.add_images("Glyphs",batch['image'])
+        #         self.logger.experiment.add_images("Skeletons",skel_imgs)
+        #     self.train()
         return loss
     
     def validation_step(self, batch, batch_idx):
@@ -126,7 +123,7 @@ class NeuralSignedDistanceModel(pl.LightningModule):
         image,pixel_coord=batch['image'],batch['pixel_coord']
         pred=self.forward(image,pixel_coord)
         loss=self.loss(pred,batch['sdv'])
-        return loss,pred#
+        return loss,pred
     
     def configure_optimizers(self):
         return optim.AdamW(self.parameters(),lr=self.lr)
@@ -136,7 +133,7 @@ class NeuralSignedDistanceModel(pl.LightningModule):
         skel_imgs=torch.zeros_like(image)
         for i in range(skel_imgs.shape[2]):
             for j in range(skel_imgs.shape[3]):
-                pixel_coord=torch.tensor(normalize([j,i])).expand(skel_imgs.shape[0],-1)
+                pixel_coord=torch.tensor(normalize([i,j])).expand(skel_imgs.shape[0],-1)
                 out = self.forward(image,pixel_coord).view(skel_imgs.shape[0],1,1,1)
                 #print("out:",out[:,0,0,0])
                 skel_imgs[:,0,i,j]=out[:,0,0,0]
