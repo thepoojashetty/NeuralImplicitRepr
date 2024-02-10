@@ -6,3 +6,5 @@ tb_logs
 Testdata
 Output_skel.png
 .vscode/
+SIREN/output/
+SIREN/siren copy.py

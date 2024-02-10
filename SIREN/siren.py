@@ -15,8 +15,9 @@ from collections import OrderedDict
 from skimage import io
 from scipy.ndimage import distance_transform_edt
 import torchvision
+import itertools
 
-import  NIR_config_inf as config
+import config
 
 def get_mgrid(sidelen, dim=2):
     '''Generates a flattened grid of (x,y,...) coordinates in a range of -1 to 1.
@@ -64,19 +65,18 @@ class SineLayer(nn.Module):
         # For visualization of activation distributions
         intermediate = self.omega_0 * self.linear(input)
         return torch.sin(intermediate), intermediate
-    
-    
-class Siren(nn.Module):
+
+class NIR_net(nn.Module):
     def __init__(self, in_features, hidden_features, hidden_layers, out_features, outermost_linear=False, 
                  first_omega_0=30, hidden_omega_0=30.):
         super().__init__()
         
-        self.net = []
-        self.net.append(SineLayer(in_features, hidden_features, 
+        self.siren_net = []
+        self.siren_net.append(SineLayer(in_features, hidden_features, 
                                   is_first=True, omega_0=first_omega_0))
 
         for i in range(hidden_layers):
-            self.net.append(SineLayer(hidden_features, hidden_features, 
+            self.siren_net.append(SineLayer(hidden_features, hidden_features, 
                                       is_first=False, omega_0=hidden_omega_0))
 
         if outermost_linear:
@@ -86,50 +86,28 @@ class Siren(nn.Module):
                 final_linear.weight.uniform_(-np.sqrt(6 / hidden_features) / hidden_omega_0, 
                                               np.sqrt(6 / hidden_features) / hidden_omega_0)
                 
-            self.net.append(final_linear)
+            self.siren_net.append(final_linear)
         else:
-            self.net.append(SineLayer(hidden_features, out_features, 
+            self.siren_net.append(SineLayer(hidden_features, out_features, 
                                       is_first=False, omega_0=hidden_omega_0))
         
-        self.net = nn.Sequential(*self.net)
-    
-    def forward(self, coords):
-        coords = coords.clone().detach().requires_grad_(True) # allows to take derivative w.r.t. input
-        output = self.net(coords)
-        return output, coords 
-    
+        self.siren_net = nn.Sequential(*self.siren_net)
 
-def get_cameraman_tensor(sidelength):
-    #img = Image.fromarray(skimage.data.camera())   
-    skel= io.imread("/Users/poojashetty/Documents/AI_SS23/Project/NeuralImplicitRepr/NIR/Testdata/img/Fust & Schoeffer Durandus Gotico-Antiqua 118G_A_8.png")
-    img=distance_transform_edt(skel)
-    img=Image.fromarray(img)
-    transform = Compose([
-        Resize(sidelength),
-        ToTensor(),
-        Normalize(torch.Tensor([0.5]), torch.Tensor([0.5]))
-    ])
-    img = transform(img)
-    return img
+        resnet_model = torchvision.models.resnet50(pretrained=True)
+        resnet_model.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
+        self.img_encoder =  nn.Sequential(*list(resnet_model.children())[:-1])
+        self.img_encoder.add_module('Flatten', nn.Flatten())
+        self.img_encoder.add_module('Linear', nn.Linear(2048, 256))
+        self.img_encoder.add_module('ReLU', nn.ReLU())
+        self.img_encoder.add_module('Linear2', nn.Linear(256, 32))
 
-class ImageFitting(Dataset):
-    def __init__(self, sidelength):
-        super().__init__()
-        img = get_cameraman_tensor(sidelength)
-        self.pixels = img.permute(1, 2, 0).view(-1, 1)
-        self.coords = get_mgrid(sidelength, 2)
-
-    def __len__(self):
-        return 1
-
-    def __getitem__(self, idx):    
-        if idx > 0: raise IndexError
-            
-        return self.coords, self.pixels
-
-def laplace(y, x):
-    grad = gradient(y, x)
-    return divergence(grad, x)
+        
+    def forward(self, images,coords):
+        encoded_img = self.img_encoder(images)
+        siren_input = torch.cat((encoded_img.unsqueeze(1).expand(-1,4096,-1), coords), dim=-1)
+        siren_input = siren_input.clone().detach().requires_grad_(True) # allows to take derivative w.r.t. input
+        model_output = self.siren_net(siren_input)
+        return model_output, siren_input
 
 
 def divergence(y, x):
@@ -157,10 +135,10 @@ class HistoricalGlyphDataset(Dataset):
         self.num_of_coord=num_of_coord
         self.img_dir= os.path.join(data_dir,"img")
         self.skel_dir= os.path.join(data_dir,"skel")
-        self.images=np.repeat(np.array(sorted(os.listdir(self.img_dir))),self.num_of_coord)
-        #print(self.data)
-        self.skel=np.repeat(np.array(sorted(os.listdir(self.skel_dir))),self.num_of_coord)
-        #print(self.skel)
+        # self.images=np.repeat(np.array(sorted(os.listdir(self.img_dir))),self.num_of_coord)
+        self.images=sorted(os.listdir(self.img_dir))
+        # self.skel=np.repeat(np.array(sorted(os.listdir(self.skel_dir))),self.num_of_coord)
+        self.skel=sorted(os.listdir(self.skel_dir))
         self.data=np.stack((self.images,self.skel),axis=1)
         #shuffle the data
         np.random.shuffle(self.data)
@@ -183,75 +161,30 @@ class HistoricalGlyphDataset(Dataset):
         skel_signed_dist=self.transform(skel_signed_dist).to(torch.float32)
         skel_signed_dist = skel_signed_dist.permute(1, 2, 0).view(-1, 1)
         #index=idx%4096
-        index=np.random.randint(0,4096)
-        #Normalize 0 to 1
-        #sampling random row and column value
-        # i=np.random.randint(0,skel.shape[0])
-        # j=np.random.randint(0,skel.shape[1])
-        
-        #Normalize the coordinates in the range -1 and 1
-        # pixel_coord=normalize(torch.tensor([i,j],dtype=torch.float32))
-        #pixel_coord=[i,j]
-        #plotMat(skel_signed_dist)
-        #plt.clf()
-        #plt.imshow(skel)
-        #plt.scatter(i,j,color="red")
-        #plt.show()
-        sample= {'image':image,'pixel_coord': self.mgrid[index],'sdv':skel_signed_dist[index]}
+        # index=np.random.randint(0,4096)
+
+        sample= {'image':image,'pixel_coord': self.mgrid,'sdv':skel_signed_dist}
         return sample
 
 if __name__ == "__main__":
-    #cameraman = ImageFitting(64)
-    # glyphData = HistoricalGlyphDataset("/Users/poojashetty/Documents/AI_SS23/Project/NeuralImplicitRepr/NIR/Testdata",num_of_coord=4096) 
     glyphData = HistoricalGlyphDataset(config.DATA_DIR,num_of_coord=config.NUM_OF_COORD)
-    dataloader = DataLoader(glyphData, batch_size=4096, pin_memory=True, num_workers=0)
-
-    img_siren = Siren(in_features=12, out_features=1, hidden_features=512,
+    dataloader = DataLoader(glyphData, batch_size=128, pin_memory=True, num_workers=0)
+    
+    model = NIR_net(in_features=34, out_features=1, hidden_features=512,
                     hidden_layers=3, outermost_linear=True)
 
-    img_encoder = nn.Sequential(
-        nn.Conv2d(1, 32, 4, stride=2, padding=1),
-        nn.GELU(),
-        nn.Conv2d(32, 64, 4, stride=2, padding=1),
-        nn.GELU(),
-        nn.Conv2d(64, 128, 4, stride=2, padding=1),
-        nn.GELU(),
-        nn.Conv2d(128, 256, 4, stride=2, padding=1),
-        nn.GELU(),
-        nn.Conv2d(256, 512, 4, stride=2, padding=1),
-        nn.GELU(),
-        nn.Flatten(),
-        nn.Linear(2048, 256),
-        nn.GELU(),
-        nn.Linear(256, 10),
-    )
-
-    # img_encoder =  torchvision.models.resnet18(pretrained=True)
+    optim = torch.optim.Adam(lr=1e-4, params=model.parameters())
     
+    epochs=200
 
-    #img_siren.cuda()
-
-    # total_steps = 500 # Since the whole image is our dataset, this just means 500 gradient descent steps.
-    # steps_til_summary = 100
-
-    optim = torch.optim.Adam(lr=1e-4, params=img_siren.parameters())
-
-    # model_input, ground_truth = next(iter(dataloader))
-    # model_input, ground_truth = model_input.cuda(), ground_truth.cuda()
-    
-    epochs=500
-
-    # for step in range(total_steps):
     for i in range(epochs):
         print("Epoch "+str(i)+"\n")
         for batch,sample in enumerate(dataloader):
             image,pixel_coord, ground_truth = sample['image'],sample['pixel_coord'],sample['sdv']
-            encoded_img = img_encoder(image)
-            siren_input = torch.cat((encoded_img, pixel_coord), dim=-1)
-            model_output, coords = img_siren(siren_input)
+            model_output, coords = model(image,pixel_coord)
             loss = ((model_output - ground_truth)**2).mean()
             
-            # if not i % 50:
+            # if not i % 100:
             #     print("Epoch %d, Total loss %0.6f" % (i, loss))
             #     img_grad = gradient(model_output, coords)
             #     img_laplacian = laplace(model_output, coords)
@@ -265,31 +198,18 @@ if __name__ == "__main__":
             optim.zero_grad()
             loss.backward()
             optim.step()
-        # model_output, coords = img_siren(model_input)
-        # loss = ((model_output - ground_truth)**2).mean()
+
+        if(i%10==0):
+            torch.save(model.state_dict(), config.CKPT_DIR_PATH+"model.pth")
         
-        # if not step % steps_til_summary:
-        #     print("Step %d, Total loss %0.6f" % (step, loss))
-        #     img_grad = gradient(model_output, coords)
-        #     img_laplacian = laplace(model_output, coords)
+    torch.save(model.state_dict(), config.CKPT_DIR_PATH+"model.pth")
 
-        #     fig, axes = plt.subplots(1,3, figsize=(18,6))
-        #     axes[0].imshow(model_output.cpu().view(64,64).detach().numpy())
-        #     axes[1].imshow(img_grad.norm(dim=-1).cpu().view(64,64).detach().numpy())
-        #     axes[2].imshow(img_laplacian.cpu().view(64,64).detach().numpy())
-        #     plt.show()
-
-        # optim.zero_grad()
-        # loss.backward()
-        # optim.step()
-
-    # torch.save(img_siren.state_dict(), config.CKPT_DIR_PATH+"siren_img.pth")
     #inference
-    img_siren.load_state_dict(torch.load(config.CKPT_DIR_PATH+"siren_img.pth"))
+    model.load_state_dict(torch.load(config.CKPT_DIR_PATH+"model.pth"))
+    model.eval()
+
     with torch.no_grad():
-        out_of_range_coords = get_mgrid(64, 2)
-        # image=io.imread("/Users/poojashetty/Documents/AI_SS23/Project/NeuralImplicitRepr/NIR/Testdata/img/Fust & Schoeffer Durandus Gotico-Antiqua 118G_a_44.png")
-        # image=io.imread("/Users/poojashetty/Documents/AI_SS23/Project/NeuralImplicitRepr/NIR/Testdata/img/Fust & Schoeffer Durandus Gotico-Antiqua 118G_A_8.png")
+        out_of_range_coords = get_mgrid(64, 2).unsqueeze(0)
         image = io.imread(config.TEST_DATA)
         transform=Compose([
             ToTensor(),
@@ -297,11 +217,7 @@ if __name__ == "__main__":
         ])
         image=transform(image).unsqueeze(0)
 
-        encoded_img = img_encoder(image)
-        encoded_img = encoded_img.repeat(4096, 1)
-        siren_input = torch.cat((encoded_img, out_of_range_coords), dim=-1)
-
-        model_out, _ = img_siren(siren_input)
+        model_out, _ = model(image,out_of_range_coords)
         fig, ax = plt.subplots(figsize=(16,16))
         img=model_out.cpu().view(64,64).numpy()
         # img=np.where(img<10,0,255)

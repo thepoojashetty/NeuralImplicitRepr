@@ -14,12 +14,14 @@
 ### Run `sinfo -h -o "%n %G"` for GPU types
 
 cp -r /cluster/ix87iquc/data/NIR /scratch/$SLURM_JOB_ID/NIR
-#unzip /cluster/ix87iquc/data/synthetic_curated_image_dump.zip -d /scratch/$SLURM_JOB_ID/
-cp -r /cluster/ix87iquc/data/Testdata/. /scratch/$SLURM_JOB_ID/
+# unzip /cluster/ix87iquc/data/synthetic_curated_image_dump.zip -d /scratch/$SLURM_JOB_ID/
+# cp -r /cluster/ix87iquc/data/Testdata/. /scratch/$SLURM_JOB_ID/
+cp /cluster/ix87iquc/data/synthetic_curated_image_dump.zip /scratch/$SLURM_JOB_ID/
+unzip /scratch/$SLURM_JOB_ID/synthetic_curated_image_dump.zip -d /scratch/$SLURM_JOB_ID/
 
 #export PATH="/cluster/ix87iquc/miniconda/bin:$PATH"
 source /cluster/ix87iquc/miniconda/etc/profile.d/conda.sh
 conda activate nirenv
 
 cd /scratch/$SLURM_JOB_ID/NIR
-python siren.py
+python main.py

@@ -1,7 +1,7 @@
 
 from GlyphDataset import GlyphDataModule
 from model import NeuralSignedDistanceModel
-import NIR_config_inf
+import NIR_config_inf as config
 from helpers import *
 
 from torchvision import transforms
@@ -30,34 +30,38 @@ def parse_args():
     return parser.parse_args()
 """
 
-def generateSkeleton(img_path,model,device,transform):
-    model.eval()
-    image=io.imread(img_path)
-    skel_img=np.zeros_like(image)
-    model.to(device)
-    image=transform(image).unsqueeze(0).to(device)
-    #print("Shape:",image.shape,"\n")
-    with torch.no_grad():
-        for i in range(image.shape[2]):
-            #print("i:",i,"\n")
-            for j in range(image.shape[3]):
-                #print("j:",j,"\n")
-                pixel_coord=torch.tensor(normalize([i,j])).unsqueeze(0).to(device)
-                skel_img[i][j] = model(image,pixel_coord)
+def get_mgrid(sidelen, dim=2):
+    '''Generates a flattened grid of (x,y,...) coordinates in a range of -1 to 1.
+    sidelen: int
+    dim: int'''
+    tensors = tuple(dim * [torch.linspace(-1, 1, steps=sidelen)])
+    mgrid = torch.stack(torch.meshgrid(*tensors), dim=-1)
+    mgrid = mgrid.reshape(-1, dim)
+    return mgrid
 
-    #skel_img=np.where(np.array(skel_img)<4,0,255)
-    plt.imshow(skel_img)
-    print(skel_img)
-    plt.savefig("Output_skel.png")
+def generateSkeleton(img_path,model,transform):
+    model.eval()
+    out_of_range_coords = get_mgrid(64, 2).unsqueeze(0)
+    image = io.imread(img_path)
+    image=transform(image).unsqueeze(0)
+
+    with torch.no_grad():
+        model_out= model(image,out_of_range_coords)
+        fig, ax = plt.subplots(figsize=(16,16))
+        img=model_out.cpu().view(64,64).numpy()
+        # img=np.where(img<10,0,255)
+        ax.imshow(img)
+        # plt.show()
+        #plt.savefig("output/final_prediction.png")
+        plt.imsave(config.GENERATED_SKEL,img)
 
 if __name__=="__main__":
-    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     transform=transforms.Compose([
             transforms.ToTensor(),
             transforms.Normalize(torch.Tensor([0.5]), torch.Tensor([0.5]))
         ])
-    model=NeuralSignedDistanceModel.load_from_checkpoint(NIR_config_inf.CKPT_DIR_PATH+"train_loss(train_loss=293.4046325683594)_best_epoch=476.ckpt")
-    img_path=NIR_config_inf.DATA_DIR+"/img/Fust & Schoeffer Durandus Gotico-Antiqua 118G_A_8.png"
-    generateSkeleton(img_path,model,device,transform)
+    model=NeuralSignedDistanceModel.load_from_checkpoint(config.CKPT_DIR_PATH+"model_loss(train_loss=158.92906188964844)_best_epoch=499.ckpt")
+    img_path=config.TEST_DATA
+    generateSkeleton(img_path,model,transform)
 
  

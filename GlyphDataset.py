@@ -8,73 +8,71 @@ import os
 from skimage import io
 from scipy.ndimage import distance_transform_edt
 import pytorch_lightning as pl
-from helpers import *
 
 import matplotlib.pyplot as plt
 
+def get_mgrid(sidelen, dim=2):
+    '''Generates a flattened grid of (x,y,...) coordinates in a range of -1 to 1.
+    sidelen: int
+    dim: int'''
+    tensors = tuple(dim * [torch.linspace(-1, 1, steps=sidelen)])
+    mgrid = torch.stack(torch.meshgrid(*tensors), dim=-1)
+    mgrid = mgrid.reshape(-1, dim)
+    return mgrid
+
 class HistoricalGlyphDataset(Dataset):
-    def __init__(self,data_dir,num_of_coord=2,transform=None):
+    def __init__(self,data_dir,transform):
         super().__init__()
         #number of pixels to sample
-        self.num_of_coord=num_of_coord
         self.img_dir= os.path.join(data_dir,"img")
         self.skel_dir= os.path.join(data_dir,"skel")
-        self.data=np.repeat(np.array(sorted(os.listdir(self.img_dir))),self.num_of_coord).tolist()
-        #print(self.data)
-        self.skel=np.repeat(np.array(sorted(os.listdir(self.skel_dir))),self.num_of_coord).tolist()
-        #print(self.skel)
+        # self.images=np.repeat(np.array(sorted(os.listdir(self.img_dir))),self.num_of_coord)
+        self.images=sorted(os.listdir(self.img_dir))
+        # self.skel=np.repeat(np.array(sorted(os.listdir(self.skel_dir))),self.num_of_coord)
+        self.skel=sorted(os.listdir(self.skel_dir))
+        self.data=np.stack((self.images,self.skel),axis=1)
+        #shuffle the data
+        #np.random.shuffle(self.data)
         self.transform=transform
+        self.mgrid=get_mgrid(64,2)
 
     def __len__(self):
         return len(self.data)
     
     def __getitem__(self,idx):
-        img_path=os.path.join(self.img_dir,self.data[idx])
+        img_path=os.path.join(self.img_dir,self.data[idx][0].item())
         image=io.imread(img_path)
-        skel_path=os.path.join(self.skel_dir,self.skel[idx])
+        image=self.transform(image)
+        skel_path=os.path.join(self.skel_dir,self.data[idx][1].item())
         skel=io.imread(skel_path)
         skel_signed_dist=distance_transform_edt(skel)
-        skel_signed_dist=self.transform(skel_signed_dist).squeeze(0).to(torch.float32)
+        skel_signed_dist=self.transform(skel_signed_dist).to(torch.float32)
+        skel_signed_dist = skel_signed_dist.permute(1, 2, 0).view(-1, 1)
+        #index=idx%4096
+        # index=np.random.randint(0,4096)
 
-        #Normalize 0 to 1
-        #sampling random row and column value
-        i=np.random.randint(0,skel.shape[0])
-        j=np.random.randint(0,skel.shape[1])
-        
-        #Normalize the coordinates in the range -1 and 1
-        pixel_coord=normalize(torch.tensor([i,j],dtype=torch.float32))
-        #pixel_coord=[i,j]
-        #plotMat(skel_signed_dist)
-        #plt.clf()
-        #plt.imshow(skel)
-        #plt.scatter(i,j,color="red")
-        #plt.show()
-        sample= {'image':image,'pixel_coord': pixel_coord,'sdv':skel_signed_dist[i,j]}
-        if self.transform:
-            sample['image']=self.transform(sample['image'])
+        sample= {'image':image,'pixel_coord': self.mgrid,'sdv':skel_signed_dist}
         return sample
 
 class GlyphDataModule(pl.LightningDataModule):
-    def __init__(self,data_dir,batch_size,num_workers,transform, num_of_coord):
+    def __init__(self,data_dir,batch_size,num_workers,transform):
         super().__init__()
         self.data_dir=data_dir
         self.batch_size=batch_size
         self.num_workers=num_workers
         self.transform=transform
-        self.num_of_coord=num_of_coord
 
     def setup(self, stage):
-        glyphDataset = HistoricalGlyphDataset(
+        self.glyphDataset = HistoricalGlyphDataset(
             data_dir= self.data_dir,
-            transform=self.transform,
-            num_of_coord= self.num_of_coord
+            transform=self.transform
         )
 
-        train_size = int(0.8*len(glyphDataset))
-        validation_size = int(0.1*len(glyphDataset))
-        test_size = len(glyphDataset)-train_size-validation_size
+        train_size = int(0.8*len(self.glyphDataset))
+        validation_size = int(0.1*len(self.glyphDataset))
+        test_size = len(self.glyphDataset)-train_size-validation_size
 
-        self.train_subset,self.valid_subset,self.test_subset=random_split(glyphDataset,[train_size,validation_size,test_size])
+        self.train_subset,self.valid_subset,self.test_subset=random_split(self.glyphDataset,[train_size,validation_size,test_size])
 
     def train_dataloader(self) :
         return DataLoader (

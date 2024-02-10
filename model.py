@@ -6,7 +6,7 @@ import torch.nn.functional as F
 import  pytorch_lightning as pl
 import torch.optim as optim
 import numpy as np
-from helpers import *
+import torchvision
     
 class SineLayer(nn.Module):
     # See paper sec. 3.2, final paragraph, and supplement Sec. 1.5 for discussion of omega_0.
@@ -18,7 +18,8 @@ class SineLayer(nn.Module):
     # If is_first=False, then the weights will be divided by omega_0 so as to keep the magnitude of 
     # activations constant, but boost gradients to the weight matrix (see supplement Sec. 1.5)
     
-    def __init__(self, in_features, out_features, bias=True,is_first=False, omega_0=30):
+    def __init__(self, in_features, out_features, bias=True,
+                 is_first=False, omega_0=30):
         super().__init__()
         self.omega_0 = omega_0
         self.is_first = is_first
@@ -39,63 +40,58 @@ class SineLayer(nn.Module):
         
     def forward(self, input):
         return torch.sin(self.omega_0 * self.linear(input))
+    
+    def forward_with_intermediate(self, input): 
+        # For visualization of activation distributions
+        intermediate = self.omega_0 * self.linear(input)
+        return torch.sin(intermediate), intermediate
+
 
 class NeuralSignedDistanceModel(pl.LightningModule):
-    def __init__(self, learning_rate) -> None:
+    def __init__(self, learning_rate,in_features, hidden_features, hidden_layers, out_features, outermost_linear=False, 
+                 first_omega_0=30, hidden_omega_0=30.):
         super().__init__()
         self.lr=learning_rate
-        self.hidden=256
-        self.layers = nn.Sequential(
-            nn.Conv2d(in_channels=1,out_channels=self.hidden,kernel_size=5,stride=2,padding=3),
-            nn.BatchNorm2d(self.hidden),
-            nn.ReLU(),
-            nn.Conv2d(in_channels=self.hidden,out_channels=self.hidden*2,kernel_size=5,stride=2,padding=2),
-            nn.BatchNorm2d(128),
-            nn.ReLU(),
-            nn.Conv2d(in_channels=self.hidden*2,out_channels=self.hidden*3,kernel_size=3,stride=2,padding=1),
-            nn.BatchNorm2d(64),
-            nn.ReLU(),
-            nn.Conv2d(in_channels=self.hidden*3,out_channels=self.hidden*4,kernel_size=3,stride=2,padding=1),
-            nn.BatchNorm2d(64),
-            nn.ReLU(),
-            nn.Flatten(),
-            nn.Linear(3200,64)
-        )
 
-        self.siren_net=self.siren(in_features=2, out_features=1, hidden_features=256, hidden_layers=5, outermost_linear=True)
-
-        self.loss=nn.MSELoss()
-        self.save_hyperparameters()
-    
-    def siren(self,in_features, hidden_features, hidden_layers, out_features, outermost_linear=False, first_omega_0=30, hidden_omega_0=30.):
-        net = []
-        net.append(SineLayer(in_features, hidden_features, is_first=True, omega_0=first_omega_0))
+        self.siren_net = []
+        self.siren_net.append(SineLayer(in_features, hidden_features,
+                                  is_first=True, omega_0=first_omega_0))
 
         for i in range(hidden_layers):
-            net.append(SineLayer(hidden_features, hidden_features, is_first=False, omega_0=hidden_omega_0))
+            self.siren_net.append(SineLayer(hidden_features, hidden_features, 
+                                      is_first=False, omega_0=hidden_omega_0))
 
         if outermost_linear:
             final_linear = nn.Linear(hidden_features, out_features)
             
             with torch.no_grad():
-                final_linear.weight.uniform_(-np.sqrt(6 / hidden_features) / hidden_omega_0, np.sqrt(6 / hidden_features) / hidden_omega_0)
+                final_linear.weight.uniform_(-np.sqrt(6 / hidden_features) / hidden_omega_0, 
+                                              np.sqrt(6 / hidden_features) / hidden_omega_0)
                 
-            net.append(final_linear)
+            self.siren_net.append(final_linear)
         else:
-            net.append(SineLayer(hidden_features, out_features, is_first=False, omega_0=hidden_omega_0))
+            self.siren_net.append(SineLayer(hidden_features, out_features, 
+                                      is_first=False, omega_0=hidden_omega_0))
+        
+        self.siren_net = nn.Sequential(*self.siren_net)
 
-        return nn.Sequential(*net)
+        resnet_model = torchvision.models.resnet18(pretrained=True)
+        self.img_encoder =  nn.Sequential(*list(resnet_model.children())[:-1])
+        self.img_encoder.add_module('Flatten', nn.Flatten())
+        self.img_encoder.add_module('Linear', nn.Linear(512, 128))
+        self.img_encoder.add_module('ReLU', nn.ReLU())
+        self.img_encoder.add_module('Linear2', nn.Linear(128, 32))
+
+        self.loss=nn.MSELoss()
+        self.save_hyperparameters()
 
     def forward(self,x,pixel_coord):
-        #output=self.layers(x)
-        #scale between -1 and 1
-        #minval=output.min().item()
-        #maxval=output.max().item()
-        #output=-1+2*(output-minval)/(maxval-minval)
-        #output=torch.cat((pixel_coord.to(torch.float32),output),dim=1)
-        output=self.siren_net(pixel_coord)
-        #print(f"Out shape {output.shape}")
-        return output
+        #our image has only one channel. We need to increase the number of channels to 3
+        encoded_img = self.img_encoder(x.expand(-1, 3, -1, -1))
+        siren_input = torch.cat((encoded_img.unsqueeze(1).expand(-1,4096,-1), pixel_coord), dim=-1)
+        siren_input = siren_input.clone().detach().requires_grad_(True) # allows to take derivative w.r.t. input
+        model_output = self.siren_net(siren_input)
+        return model_output
 
     def training_step(self, batch, batch_idx):
         loss,pred=self.common_step(batch,batch_idx)
@@ -126,17 +122,11 @@ class NeuralSignedDistanceModel(pl.LightningModule):
         return loss,pred
     
     def configure_optimizers(self):
-        return optim.AdamW(self.parameters(),lr=self.lr)
+        return optim.AdamW(lr=1e-4, params=self.parameters())
     
     def generateSkeleton(self,batch):
-        image=batch['image']
-        skel_imgs=torch.zeros_like(image)
-        for i in range(skel_imgs.shape[2]):
-            for j in range(skel_imgs.shape[3]):
-                pixel_coord=torch.tensor(normalize([i,j])).expand(skel_imgs.shape[0],-1)
-                out = self.forward(image,pixel_coord).view(skel_imgs.shape[0],1,1,1)
-                #print("out:",out[:,0,0,0])
-                skel_imgs[:,0,i,j]=out[:,0,0,0]
-        #print("skel_img:",skel_imgs)
-        skel_imgs=np.where(np.array(skel_imgs)<4,0,255)
+        image=batch['image'][0]
+        pixel_coord=batch['pixel_coord'][0]
+        model_out=self.forward(image.unsqueeze(0),pixel_coord.unsqueeze(0))
+        skel_imgs=model_out.cpu().view(64,64).numpy()
         return skel_imgs

@@ -15,6 +15,7 @@ CKPT_DIR_PATH="/Users/poojashetty/Documents/AI_SS23/Project/NeuralImplicitRepr/N
 LOG_PATH="./tb_logs"
 
 #Inference
-TEST_DATA="/Users/poojashetty/Documents/AI_SS23/Project/NeuralImplicitRepr/NIR/Testdata/img/Fust & Schoeffer Durandus Gotico-Antiqua 118G_a_44.png"
-# TEST_DATA="/Users/poojashetty/Documents/AI_SS23/Project/NeuralImplicitRepr/NIR/Testdata/img/Fust & Schoeffer Durandus Gotico-Antiqua 118G_A_8.png"
+# TEST_DATA="/Users/poojashetty/Documents/AI_SS23/Project/NeuralImplicitRepr/NIR/Testdata/img/Fust & Schoeffer Durandus Gotico-Antiqua 118G_a_44.png"
+# TEST_DATA="/Users/poojashetty/Documents/AI_SS23/Project/NeuralImplicitRepr/NIR/Testdata/img/Fust & Schoeffer Durandus Gotico-Antiqua 118G_E_14.png"
+TEST_DATA="/Users/poojashetty/Documents/AI_SS23/Project/NeuralImplicitRepr/NIR/Testdata/img/Fust & Schoeffer Durandus Gotico-Antiqua 118G_A_8.png"
 GENERATED_SKEL="/Users/poojashetty/Documents/AI_SS23/Project/NeuralImplicitRepr/NIR/SIREN/generated_skel.png"
