@@ -2,6 +2,7 @@
 from GlyphDataset import GlyphDataModule
 from model import NeuralSignedDistanceModel
 import config
+from helpers import expand_channels
 
 from torchvision import transforms
 import numpy as np
@@ -24,12 +25,23 @@ if __name__=='__main__':
     #args=parse_args()
     os.makedirs(config.CKPT_DIR_PATH, exist_ok=True)
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-    transform=transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Normalize(torch.Tensor([0.5]), torch.Tensor([0.5]))
-        ])
-    model= NeuralSignedDistanceModel(learning_rate=config.LEARNING_RATE,in_features=34, out_features=1, hidden_features=128,
-                    hidden_layers=3, outermost_linear=True)
+    # transform=transforms.Compose([
+    #         transforms.ToTensor(),
+    #         transforms.Normalize(torch.Tensor([0.5]), torch.Tensor([0.5]))
+    #     ])
+
+    transform = transforms.Compose([
+        transforms.ToTensor(),
+        # transforms.Resize(256),
+        # transforms.CenterCrop(224),
+        transforms.Lambda(expand_channels),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+    ])
+
+    model= NeuralSignedDistanceModel(learning_rate=config.LEARNING_RATE,in_features=66, out_features=1, hidden_features=256,
+                    hidden_layers=4, outermost_linear=True)
+
+    # model = NeuralSignedDistanceModel.load_from_checkpoint(config.CKPT_DIR_PATH+"model_loss(train_loss=14.46153450012207)_best_epoch=365.ckpt")
     data= GlyphDataModule(
         data_dir=config.DATA_DIR,
         batch_size=config.BATCH_SIZE,
@@ -42,6 +54,8 @@ if __name__=='__main__':
         schedule=torch.profiler.schedule(skip_first=3, wait=1,warmup=1,active=20)
     )
     trainer=pl.Trainer(
+        accelerator=config.ACCELERATOR,
+        devices=config.DEVICES,
         logger=logger,
         # profiler=profiler,
         min_epochs=1,
@@ -57,7 +71,7 @@ if __name__=='__main__':
             #EarlyStopping(monitor="validation_loss")
             ModelCheckpoint(
                 dirpath=config.CKPT_DIR_PATH,
-                filename="model_loss({val_loss:.2f})_lastepoch({epoch})",
+                filename="model_loss({validation_loss:.2f})_lastepoch({epoch})",
             )
         ]
     )

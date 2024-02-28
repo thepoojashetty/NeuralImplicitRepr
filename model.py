@@ -75,26 +75,37 @@ class NeuralSignedDistanceModel(pl.LightningModule):
         
         self.siren_net = nn.Sequential(*self.siren_net)
 
-        resnet_model = torchvision.models.resnet18(pretrained=True)
-        self.img_encoder =  nn.Sequential(*list(resnet_model.children())[:-1])
-        self.img_encoder.add_module('Flatten', nn.Flatten())
-        self.img_encoder.add_module('Linear', nn.Linear(512, 128))
-        self.img_encoder.add_module('ReLU', nn.ReLU())
-        self.img_encoder.add_module('Linear2', nn.Linear(128, 32))
+        # resnet_model = torchvision.models.resnet18(pretrained=True)
+        # self.img_encoder =  nn.Sequential(*list(resnet_model.children())[:-1])
+        # self.img_encoder.add_module('Flatten', nn.Flatten())
+        # self.img_encoder.add_module('Linear', nn.Linear(512, 128))
+        # self.img_encoder.add_module('ReLU', nn.ReLU())
+        # self.img_encoder.add_module('Linear2', nn.Linear(128, 32))
+
+        #using squeezenet as the image encoder
+        self.img_encoder = torchvision.models.squeezenet1_1(pretrained=True)
+        self.img_encoder.classifier = torch.nn.Sequential()
+        
+        self.reduce_encoder_output = nn.Sequential(
+            nn.Linear(4608, 128),
+            nn.ReLU(),
+            nn.Linear(128, 64)
+        )
 
         self.loss=nn.MSELoss()
         self.save_hyperparameters()
 
     def forward(self,x,pixel_coord):
         #our image has only one channel. We need to increase the number of channels to 3
-        encoded_img = self.img_encoder(x.expand(-1, 3, -1, -1))
+        encoded_img = self.img_encoder(x)
+        encoded_img = self.reduce_encoder_output(encoded_img)
         siren_input = torch.cat((encoded_img.unsqueeze(1).expand(-1,4096,-1), pixel_coord), dim=-1)
         siren_input = siren_input.clone().detach().requires_grad_(True) # allows to take derivative w.r.t. input
         model_output = self.siren_net(siren_input)
         return model_output
 
     def training_step(self, batch, batch_idx):
-        loss,pred=self.common_step(batch,batch_idx)
+        loss=self.common_step(batch,batch_idx)
         self.log('train_loss',loss,on_epoch=True)
         # if self.current_epoch%20==0 and batch_idx==0:
         #     self.eval()
@@ -106,12 +117,12 @@ class NeuralSignedDistanceModel(pl.LightningModule):
         return loss
     
     def validation_step(self, batch, batch_idx):
-        loss,pred=self.common_step(batch,batch_idx)
+        loss=self.common_step(batch,batch_idx)
         self.log('validation_loss',loss)
         return loss
     
     def test_step(self, batch, batch_idx):
-        loss,pred=self.common_step(batch,batch_idx)
+        loss=self.common_step(batch,batch_idx)
         self.log('test_loss',loss)
         return loss
 
@@ -119,7 +130,7 @@ class NeuralSignedDistanceModel(pl.LightningModule):
         image,pixel_coord=batch['image'],batch['pixel_coord']
         pred=self.forward(image,pixel_coord)
         loss=self.loss(pred,batch['sdv'])
-        return loss,pred
+        return loss
     
     def configure_optimizers(self):
         return optim.AdamW(lr=1e-4, params=self.parameters())

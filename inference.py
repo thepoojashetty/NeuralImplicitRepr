@@ -56,11 +56,12 @@ def generateSkeleton(img_path,model,transform):
         plt.imsave(config.GENERATED_SKEL,img)
 
 if __name__=="__main__":
-    transform=transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Normalize(torch.Tensor([0.5]), torch.Tensor([0.5]))
-        ])
-    model=NeuralSignedDistanceModel.load_from_checkpoint(config.CKPT_DIR_PATH+"model_loss(train_loss=158.92906188964844)_best_epoch=499.ckpt")
+    transform = transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Lambda(expand_channels),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+    ])
+    model=NeuralSignedDistanceModel.load_from_checkpoint(config.CKPT_DIR_PATH+"model_loss(train_loss=14.46153450012207)_best_epoch=365.ckpt")
     img_path=config.TEST_DATA
     generateSkeleton(img_path,model,transform)
 

@@ -34,6 +34,10 @@ class HistoricalGlyphDataset(Dataset):
         #shuffle the data
         #np.random.shuffle(self.data)
         self.transform=transform
+        self.transform_skel= transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize(torch.Tensor([0.5]), torch.Tensor([0.5]))
+        ])
         self.mgrid=get_mgrid(64,2)
 
     def __len__(self):
@@ -46,7 +50,7 @@ class HistoricalGlyphDataset(Dataset):
         skel_path=os.path.join(self.skel_dir,self.data[idx][1].item())
         skel=io.imread(skel_path)
         skel_signed_dist=distance_transform_edt(skel)
-        skel_signed_dist=self.transform(skel_signed_dist).to(torch.float32)
+        skel_signed_dist=self.transform_skel(skel_signed_dist).to(torch.float32)
         skel_signed_dist = skel_signed_dist.permute(1, 2, 0).view(-1, 1)
         #index=idx%4096
         # index=np.random.randint(0,4096)
@@ -76,7 +80,7 @@ class GlyphDataModule(pl.LightningDataModule):
 
     def train_dataloader(self) :
         return DataLoader (
-            dataset=self.train_subset,
+            dataset=self.glyphDataset,
             batch_size=self.batch_size,
             num_workers=self.num_workers,
             shuffle=True
