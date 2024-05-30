@@ -1,9 +1,9 @@
 #!/bin/bash -l
-#SBATCH --job-name=NIR
+#SBATCH --job-name=AE
 #SBATCH --gres=gpu:a100:1
 #SBATCH --partition=a100
-#SBATCH -o /home/hpc/iwi5/iwi5192h/NIR/NIR.out
-#SBATCH -e /home/hpc/iwi5/iwi5192h/NIR/NIR.err
+#SBATCH -o /home/hpc/rzku/hpcv720h/NIR/AutoEncoder/AE.out
+#SBATCH -e /home/hpc/rzku/hpcv720h/NIR/AutoEncoder/AE.err
 #Timelimit format: "hours:minutes:seconds" -- max is 24h
 #SBATCH --time=24:00:00
 ### Choose a specific GPU: #SBATCH --gres=gpu:q5000:1
@@ -18,5 +18,5 @@
 module add python
 conda activate nirenv
 
-cd /home/hpc/iwi5/iwi5192h/NIR/
+cd /home/hpc/rzku/hpcv720h/NIR/AutoEncoder/
 srun python main.py

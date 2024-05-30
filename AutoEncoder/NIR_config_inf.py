@@ -17,10 +17,9 @@ LOG_PATH="./tb_logs"
 
 #Inference
 # TEST_DATA="/Users/poojashetty/Documents/AI_SS23/Project/NeuralImplicitRepr/NIR/Testdata/img/Fust & Schoeffer Durandus Gotico-Antiqua 118G_a_44.png"
-# TEST_DATA="/Users/poojashetty/Documents/AI_SS23/Project/NeuralImplicitRepr/NIR/Testdata/img/Fust & Schoeffer Durandus Gotico-Antiqua 118G_g_ra_90.png"
-TEST_DATA1="/Users/poojashetty/Documents/AI_SS23/Project/NeuralImplicitRepr/NIR/Testdata/img/Fust & Schoeffer Durandus Gotico-Antiqua 118G_E_14.png"
+TEST_DATA="/Users/poojashetty/Documents/AI_SS23/Project/NeuralImplicitRepr/NIR/Testdata/img/Fust & Schoeffer Durandus Gotico-Antiqua 118G_E_14.png"
 # TEST_DATA="/Users/poojashetty/Documents/AI_SS23/Project/NeuralImplicitRepr/NIR/Testdata/img/Fust & Schoeffer Durandus Gotico-Antiqua 118G_A_8.png"
-TEST_DATA2 = "/Users/poojashetty/Documents/AI_SS23/Project/NeuralImplicitRepr/NIR/Testdata/img/Fust & Schoeffer Durandus Gotico-Antiqua 118G_D_13.png"
+# TEST_DATA = "/Users/poojashetty/Documents/AI_SS23/Project/NeuralImplicitRepr/NIR/Testdata/img/Fust & Schoeffer Durandus Gotico-Antiqua 118G_D_13.png"
 # TEST_DATA = "/Users/poojashetty/Documents/AI_SS23/Project/NeuralImplicitRepr/NIR/Testdata/img/Fust & Schoeffer Durandus Gotico-Antiqua 118G_M_22.png"
-GENERATED_SKEL="/Users/poojashetty/Documents/AI_SS23/Project/Report/figures/"
+GENERATED_SKEL="/Users/poojashetty/Documents/AI_SS23/Project/NeuralImplicitRepr/NIR/generated_skel.png"
 
